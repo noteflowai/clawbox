@@ -1,6 +1,6 @@
-# clawbox
+# ClawBox
 
-A cloud-native OpenClaw environment on AWS EKS, powered by Amazon Bedrock.
+A cloud-native OpenClaw environment on Kubernetes
 
 ## OpenClaw as Claude Native Service
 
