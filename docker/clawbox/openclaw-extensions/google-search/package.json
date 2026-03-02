@@ -1,0 +1,14 @@
+{
+  "name": "@openclaw/google-search",
+  "version": "1.0.0",
+  "description": "OpenClaw Google Search plugin — bridges google-search-mcp via mcporter",
+  "type": "module",
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "dependencies": {
+    "@sinclair/typebox": "0.34.48"
+  }
+}

@@ -1,0 +1,127 @@
+{{- if $.Values.agentx.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agentx-backend-config
+data:
+  config.yaml: |
+    dependencies:
+      db: {{ default $.Values.global.dependencies.mongo $.Values.agentx.config.db | quote }}
+
+    service:
+      dataBasePath: "/agent/data"
+      sandboxURL: {{ $.Values.agentx.config.sandboxURL | quote }}
+      openCodeURL: {{ $.Values.agentx.config.openCodeURL | quote }}
+      version: {{ $.Values.agentx.config.version | quote }}
+      stt:
+        model: {{ $.Values.agentx.config.stt.model | quote }}
+        baseURL: {{ $.Values.agentx.config.stt.baseURL | quote }}
+        apiKey: {{ $.Values.agentx.config.stt.apiKey | quote }}
+        language: {{ $.Values.agentx.config.stt.language | quote }}
+
+    apis:
+      httpAddr: ":8080"
+      grpcAddr: ":8081"
+      metricsAddr: ":9090"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agentx-backend
+spec:
+  selector:
+    app: agentx-backend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: grpc
+      port: 8081
+      targetPort: 8081
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentx-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agentx-backend
+  template:
+    metadata:
+      labels:
+        app: agentx-backend
+    spec:
+      containers:
+        - name: agentx-backend
+          image: {{ .Values.global.repository }}public/dev:agentx-backend
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+            - containerPort: 8081
+            - containerPort: 9090
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+              cpu: "2"
+          volumeMounts:
+            - name: config
+              mountPath: /home/core/config.yaml
+              subPath: config.yaml
+            - name: config
+              mountPath: /home/core/configs/config.yaml
+              subPath: config.yaml
+            - name: data
+              mountPath: /agent/data
+      volumes:
+        - name: config
+          configMap:
+            name: agentx-backend-config
+        - name: data
+          emptyDir: {}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: agentx-backend
+spec:
+  parentRefs:
+    - name: {{ $.Values.global.gateway }}
+      namespace: {{ $.Values.global.gatewayNamespace }}
+  hostnames:
+    - "agentx-dev.{{ $.Values.global.wildcardHost }}"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api
+      backendRefs:
+        - name: agentx-backend
+          port: 8080
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /grpc
+      backendRefs:
+        - name: agentx-backend
+          port: 8081
+{{- end }}

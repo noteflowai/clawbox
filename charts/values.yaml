@@ -1,0 +1,60 @@
+global:
+  wildcardHost: nx.run
+  gateway: eg
+  gatewayNamespace: aws300
+  repository: 867344450900.dkr.ecr.us-west-2.amazonaws.com/
+  dependencies:
+    mongo: mongodb://admin:passwd@mongo.aws300.svc.cluster.local:27017?authSource=admin
+    mysql: mysql://root:passwd@mysql.aws300.svc.cluster.local:3306
+    redis: redis://:passwd@redis.aws300.svc.cluster.local:6379/0
+  hpa:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 100
+    targetCPUUtilizationPercentage: 80
+
+agentx:
+  enabled: false
+  # config: overrides for backend config.yaml fields
+  config:
+    db: ""              # MongoDB connection string, defaults to global.dependencies.mongo
+    sandboxURL: "https://sandbox.nx.run"
+    openCodeURL: "http://agentx-opencode:8310"
+    version: "1.0.0"
+    stt:
+      model: "whisper-1"
+      baseURL: "http://devgpu.nx.run:8000/v1"
+      apiKey: "not-needed"
+      language: "zh"
+
+clawbox:
+  enabled: false
+  # webtopToken: 设置后将作为 SELKIES_MASTER_TOKEN 启用 URL token 认证
+  # 访问方式: https://<host>/?token=<webtopToken>
+  # 留空或不设置则不启用认证（Selkies 默认行为）
+  webtopToken: ""
+  # irsaRoleArn: IAM role ARN for IRSA (pod-level AWS credentials via ServiceAccount)
+  # The role must have Bedrock permissions: bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream
+  # Example: arn:aws:iam::123456789012:role/ClawboxBedrockRole
+  irsaRoleArn: ""
+
+  # feishu: Feishu (Lark) channel credentials injected into openclaw.json ConfigMap.
+  # Only used when customConfig.enabled is false (the default).
+  feishu:
+    appId: ""
+    appSecret: ""
+    encryptKey: ""
+    verificationToken: ""
+
+  # customConfig: Override the entire openclaw.json with a user-supplied JSON string.
+  # When enabled: true, the feishu keys above are ignored and the ConfigMap is populated
+  # entirely from customConfig.json instead.
+  # Usage example in your values override file:
+  #   clawbox:
+  #     customConfig:
+  #       enabled: true
+  #       json: |
+  #         { "channels": { "feishu": { ... } }, ... }
+  customConfig:
+    enabled: false
+    json: ""

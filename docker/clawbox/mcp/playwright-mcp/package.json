@@ -1,0 +1,7 @@
+{
+  "name": "playwright-mcp-server",
+  "private": true,
+  "dependencies": {
+    "@playwright/mcp": "latest"
+  }
+}

@@ -1,0 +1,332 @@
+{{- if $.Values.clawbox.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: clawbox
+spec:
+  parentRefs:
+    - name: {{ $.Values.global.gateway }}
+      namespace: {{ $.Values.global.gatewayNamespace }}
+  hostnames:
+    - "clawbox-dev.{{ .Values.global.wildcardHost }}"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: claw
+          port: 3000
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openclaw-config
+data:
+  {{- if $.Values.clawbox.customConfig.enabled }}
+  {{- /* User provides a full openclaw.json — use it verbatim */}}
+  openclaw.json: |
+{{ $.Values.clawbox.customConfig.json | indent 4 }}
+  {{- else }}
+  {{- /* Default: template from openclaw-aws.json, feishu keys injected from values */}}
+  openclaw.json: |
+    {
+      "auth": {
+        "profiles": {},
+        "order": {}
+      },
+      "models": {
+        "bedrockDiscovery": { "enabled": false },
+        "providers": {
+          "amazon-bedrock": {
+            "baseUrl": "https://bedrock-runtime.us-west-2.amazonaws.com",
+            "api": "bedrock-converse-stream",
+            "auth": "aws-sdk",
+            "models": [
+              {
+                "id": "us.anthropic.claude-sonnet-4-6",
+                "name": "Claude Sonnet 4.6 (Bedrock)",
+                "reasoning": true,
+                "input": ["text", "image"],
+                "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+                "contextWindow": 200000,
+                "maxTokens": 8192
+              },
+              {
+                "id": "us.anthropic.claude-opus-4-6-v1",
+                "name": "Claude Opus 4.6 (Bedrock)",
+                "reasoning": true,
+                "input": ["text", "image"],
+                "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+                "contextWindow": 200000,
+                "maxTokens": 16384
+              }
+            ]
+          }
+        }
+      },
+      "agents": {
+        "defaults": {
+          "model": {
+            "primary": "amazon-bedrock/us.anthropic.claude-sonnet-4-6",
+            "fallbacks": ["amazon-bedrock/us.anthropic.claude-opus-4-6-v1"]
+          },
+          "cliBackends": {
+            "claude-cli": {
+              "command": "claude",
+              "args": ["-p", "--output-format", "json", "--dangerously-skip-permissions", "--mcp-config", "/home/core/.openclaw/claude-mcp.json"],
+              "resumeArgs": ["-p", "--output-format", "json", "--dangerously-skip-permissions", "--resume", "{sessionId}", "--mcp-config", "/home/core/.openclaw/claude-mcp.json"],
+              "output": "json",
+              "input": "arg",
+              "modelArg": "--model",
+              "sessionArg": "--session-id",
+              "sessionMode": "always",
+              "sessionIdFields": ["session_id"],
+              "systemPromptArg": "--append-system-prompt",
+              "systemPromptWhen": "first",
+              "modelAliases": {
+                "sonnet-4.5": "claude-sonnet-4-5-20250929",
+                "opus-4.5": "claude-opus-4-5-20250929",
+                "haiku-4.5": "claude-haiku-4-5-20251001"
+              }
+            }
+          }
+        },
+        "list": [
+          {
+            "id": "main",
+            "name": "OpenClaw Main",
+            "default": true,
+            "workspace": "/home/core/Workspace",
+            "tools": { "profile": "full" }
+          },
+          {
+            "id": "claudecode",
+            "name": "ClaudeCode Agent",
+            "workspace": "/home/core/Workspace/claudecode",
+            "tools": { "profile": "coding" },
+            "model": { "primary": "claude-cli/sonnet-4.6" }
+          }
+        ]
+      },
+      "gateway": {
+        "mode": "local",
+        "bind": "lan",
+        "port": 18789,
+        "auth": { "token": "todo-replace-your-openclaw-gateway-token" },
+        "controlUi": {
+          "allowInsecureAuth": true,
+          "dangerouslyAllowHostHeaderOriginFallback": true
+        }
+      },
+      "browser": {
+        "enabled": true,
+        "defaultProfile": "sandbox",
+        "attachOnly": true,
+        "remoteCdpTimeoutMs": 3000,
+        "remoteCdpHandshakeTimeoutMs": 5000,
+        "profiles": {
+          "sandbox": {
+            "cdpUrl": "http://localhost:9222",
+            "color": "#FF6600"
+          }
+        }
+      },
+      "channels": {
+        "feishu": {
+          "enabled": true,
+          "appId": {{ $.Values.clawbox.feishu.appId | quote }},
+          "appSecret": {{ $.Values.clawbox.feishu.appSecret | quote }},
+          "encryptKey": {{ $.Values.clawbox.feishu.encryptKey | quote }},
+          "verificationToken": {{ $.Values.clawbox.feishu.verificationToken | quote }},
+          "domain": "feishu",
+          "connectionMode": "websocket",
+          "dmPolicy": "open",
+          "allowFrom": ["*"],
+          "groupPolicy": "open",
+          "requireMention": false,
+          "renderMode": "auto"
+        }
+      },
+      "plugins": {
+        "entries": {
+          "feishu": { "enabled": true },
+          "lobster": { "enabled": true },
+          "memory-lancedb": { "enabled": true },
+          "google-search": { "enabled": true }
+        }
+      },
+      "bindings": [
+        { "agentId": "main", "match": { "channel": "feishu" } }
+      ]
+    }
+  {{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: claude-mcp-config
+data:
+  claude-mcp.json: |
+    {
+      "mcpServers": {
+        "playwright": {
+          "url": "http://localhost:8931/sse",
+          "transport": "sse"
+        },
+        "google": {
+          "url": "http://localhost:8933/mcp",
+          "transport": "http"
+        }
+      }
+    }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: jump-sa
+  annotations:
+    eks.amazonaws.com/role-arn: {{ $.Values.clawbox.irsaRoleArn }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: claw
+spec:
+  selector:
+    app: claw
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+    - name: playwright-mcp
+      port: 8931
+      targetPort: 8931
+    - name: google-search-mcp
+      port: 8933
+      targetPort: 8933
+    - name: claw-mcp
+      port: 8888
+      targetPort: 8888
+    - name: openclaw-gateway
+      port: 18789
+      targetPort: 18789
+    - name: openclaw-bridge
+      port: 18790
+      targetPort: 18790
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: claw
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: claw
+  template:
+    metadata:
+      labels:
+        app: claw
+    spec:
+      serviceAccountName: jump-sa
+      containers:
+        - name: claw
+          image: {{ .Values.global.repository }}public/dev:clawbox
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+            - containerPort: 8931
+            - containerPort: 8933
+            - containerPort: 8888
+            - containerPort: 18789
+            - containerPort: 18790
+          env:
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            # OpenClaw Gateway authentication token
+            - name: OPENCLAW_GATEWAY_TOKEN
+              value: "todo-replace-your-openclaw-gateway-token"
+            - name: CLAUDE_CODE_USE_BEDROCK
+              value: "1"
+            # Selkies URL token 认证: 设置后访问需在 URL 附加 ?token=<value>
+            # 对应 values.clawbox.webtopToken，留空则不启用认证
+            - name: SELKIES_MASTER_TOKEN
+              value: {{ $.Values.clawbox.webtopToken | default "" | quote }}
+          securityContext:
+            capabilities:
+              add:
+                - SYS_ADMIN
+            seccompProfile:
+              type: Unconfined
+          # startupProbe: 给容器充裕的初始化时间（X桌面 + Selkies + nginx 启动较慢）
+          # 最长等待 30 × 10s = 300秒，通过后才启动 liveness/readiness
+          startupProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 30
+            successThreshold: 1
+          # readinessProbe: 3000端口就绪后流量才进入，失败则从 Service 端点摘除
+          readinessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+            successThreshold: 1
+          # livenessProbe: 运行时检测，连续失败3次则重启容器
+          livenessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+            successThreshold: 1
+          resources:
+            requests:
+              memory: "4Gi"
+              cpu: "2"
+            limits:
+              memory: "16Gi"
+              cpu: "8"
+          volumeMounts:
+            - name: workspace
+              mountPath: /home/core/Workspace
+            - name: chromium-data
+              mountPath: /home/core/.config/chromium
+            - name: dshm
+              mountPath: /dev/shm
+            - name: openclaw-data
+              mountPath: /home/core/.openclaw
+            # Mount openclaw config from ConfigMap to /config-init/openclaw
+            # s6 init script will copy to actual location for runtime modification
+            - name: openclaw-config-init
+              mountPath: /config-init/openclaw
+            # Mount claude-mcp.json directly into openclaw data dir
+            # subPath prevents overwriting the whole directory
+            - name: claude-mcp-config
+              mountPath: /home/core/.openclaw/claude-mcp.json
+              subPath: claude-mcp.json
+      volumes:
+        - name: workspace
+          emptyDir: {}
+        - name: chromium-data
+          emptyDir: {}
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi
+        - name: openclaw-data
+          emptyDir: {}
+        - name: openclaw-config-init
+          configMap:
+            name: openclaw-config
+        - name: claude-mcp-config
+          configMap:
+            name: claude-mcp-config
+---
+{{- end }}

@@ -1,0 +1,23 @@
+global:
+  wildcardHost: nx.run
+  gateway: eg
+  gatewayNamespace: aws300
+  repository: 867344450900.dkr.ecr.us-west-2.amazonaws.com/
+
+agentx:
+  enabled: true
+  config:
+    db: "mongodb://admin:passwd@mongo.aws300.svc.cluster.local:27017/agentx?authSource=admin"
+
+clawbox:
+  enabled: true
+  # URL token 认证: https://clawbox-dev.nx.run/?token=<webtopToken>
+  webtopToken: "clawbox-2024"
+  # IRSA role ARN for Bedrock access (bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream)
+  irsaRoleArn: "arn:aws:iam::867344450900:role/NxlabsEKS_JumpRole"
+  # Feishu channel credentials
+  feishu:
+    appId: "cli_a929b***********"
+    appSecret: "*****************************"
+    encryptKey: ""
+    verificationToken: "*****************************"

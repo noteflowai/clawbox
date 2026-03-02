@@ -1,0 +1,10 @@
+{
+  "id": "google-search",
+  "name": "Google Search",
+  "description": "Real-time Google search via google-search-mcp and mcporter bridge.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

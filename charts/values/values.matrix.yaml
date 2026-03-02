@@ -1,0 +1,167 @@
+global:
+  wildcardHost: nx.run
+  gateway: eg
+  gatewayNamespace: aws300
+  repository: 867344450900.dkr.ecr.us-west-2.amazonaws.com/
+
+clawbox:
+  enabled: true
+  webtopToken: "clawbox-2024"
+  irsaRoleArn: "arn:aws:iam::867344450900:role/NxlabsEKS_JumpRole"
+
+  # Matrix channel — 通过 customConfig 完整替换 openclaw.json
+  # 将 feishu channel 切换为 Matrix，支持多账号 / 多 agent 绑定
+  customConfig:
+    enabled: true
+    json: |
+      {
+        "auth": {
+          "profiles": {},
+          "order": {}
+        },
+        "models": {
+          "bedrockDiscovery": { "enabled": false },
+          "providers": {
+            "amazon-bedrock": {
+              "baseUrl": "https://bedrock-runtime.us-west-2.amazonaws.com",
+              "api": "bedrock-converse-stream",
+              "auth": "aws-sdk",
+              "models": [
+                {
+                  "id": "us.anthropic.claude-sonnet-4-6",
+                  "name": "Claude Sonnet 4.6 (Bedrock)",
+                  "reasoning": true,
+                  "input": ["text", "image"],
+                  "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+                  "contextWindow": 200000,
+                  "maxTokens": 8192
+                },
+                {
+                  "id": "us.anthropic.claude-opus-4-6-v1",
+                  "name": "Claude Opus 4.6 (Bedrock)",
+                  "reasoning": true,
+                  "input": ["text", "image"],
+                  "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+                  "contextWindow": 200000,
+                  "maxTokens": 16384
+                }
+              ]
+            }
+          }
+        },
+        "agents": {
+          "defaults": {
+            "model": {
+              "primary": "amazon-bedrock/us.anthropic.claude-sonnet-4-6",
+              "fallbacks": ["amazon-bedrock/us.anthropic.claude-opus-4-6-v1"]
+            },
+            "cliBackends": {
+              "claude-cli": {
+                "command": "claude",
+                "args": ["-p", "--output-format", "json", "--dangerously-skip-permissions", "--mcp-config", "/home/core/.openclaw/claude-mcp.json"],
+                "resumeArgs": ["-p", "--output-format", "json", "--dangerously-skip-permissions", "--resume", "{sessionId}", "--mcp-config", "/home/core/.openclaw/claude-mcp.json"],
+                "output": "json",
+                "input": "arg",
+                "modelArg": "--model",
+                "sessionArg": "--session-id",
+                "sessionMode": "always",
+                "sessionIdFields": ["session_id"],
+                "systemPromptArg": "--append-system-prompt",
+                "systemPromptWhen": "first",
+                "modelAliases": {
+                  "sonnet-4.5": "claude-sonnet-4-5-20250929",
+                  "opus-4.5": "claude-opus-4-5-20250929",
+                  "haiku-4.5": "claude-haiku-4-5-20251001"
+                }
+              }
+            }
+          },
+          "list": [
+            {
+              "id": "main",
+              "name": "OpenClaw Main",
+              "default": true,
+              "workspace": "/home/core/Workspace",
+              "tools": { "profile": "full" }
+            },
+            {
+              "id": "claudecode",
+              "name": "ClaudeCode Agent",
+              "workspace": "/home/core/Workspace/claudecode",
+              "tools": { "profile": "coding" },
+              "model": { "primary": "claude-cli/sonnet-4.6" }
+            }
+          ]
+        },
+        "gateway": {
+          "mode": "local",
+          "bind": "lan",
+          "port": 18789,
+          "auth": { "token": "todo-replace-your-openclaw-gateway-token" },
+          "controlUi": {
+            "allowInsecureAuth": true,
+            "dangerouslyAllowHostHeaderOriginFallback": true
+          }
+        },
+        "browser": {
+          "enabled": true,
+          "defaultProfile": "sandbox",
+          "attachOnly": true,
+          "remoteCdpTimeoutMs": 3000,
+          "remoteCdpHandshakeTimeoutMs": 5000,
+          "profiles": {
+            "sandbox": {
+              "cdpUrl": "http://localhost:9222",
+              "color": "#FF6600"
+            }
+          }
+        },
+        "channels": {
+          "matrix": {
+            "enabled": true,
+            "homeserver": "https://matrix.nx.run",
+            "encryption": false,
+            "initialSyncLimit": 1,
+            "autoJoin": "always",
+            "groupPolicy": "open",
+            "allowFrom": ["*"],
+            "dm": {
+              "policy": "open",
+              "allowFrom": ["*"]
+            },
+            "threadReplies": "inbound",
+            "groups": {
+              "*": {
+                "allow": true,
+                "requireMention": false
+              }
+            },
+            "accounts": {
+              "default": {
+                "homeserver": "https://matrix.nx.run",
+                "userId": "@claw:matrix.nx.run",
+                "accessToken": "syt_*****************************",
+                "name": "Claw Bot"
+              },
+              "claudecode": {
+                "homeserver": "https://matrix.nx.run",
+                "userId": "@claude:matrix.nx.run",
+                "accessToken": "syt_*****************************",
+                "name": "Claude Code Bot"
+              }
+            }
+          }
+        },
+        "plugins": {
+          "entries": {
+            "matrix": { "enabled": true },
+            "lobster": { "enabled": true },
+            "memory-lancedb": { "enabled": true },
+            "google-search": { "enabled": true }
+          }
+        },
+        "bindings": [
+          { "agentId": "main",       "match": { "channel": "matrix", "accountId": "default" } },
+          { "agentId": "claudecode", "match": { "channel": "matrix", "accountId": "claudecode" } }
+        ]
+      }
