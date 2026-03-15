@@ -2,7 +2,13 @@
 
 A cloud-native OpenClaw environment on Kubernetes
 
-[![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home#/stacks/new?stackName=ClawBox&templateURL=https://raw.githubusercontent.com/aws300/clawbox/main/scripts/CloudFormation.yaml)
+### Deploy
+
+1. Download [`CloudFormation.yaml`](https://raw.githubusercontent.com/aws300/clawbox/main/scripts/CloudFormation.yaml)
+2. Open the [AWS CloudFormation Console](https://console.aws.amazon.com/cloudformation/home#/stacks/new) → **Create stack** → **Upload a template file**
+3. Upload the downloaded YAML file, then follow the wizard to create the stack
+
+> **Note:** CloudFormation's `templateURL` parameter only accepts S3 URLs, so the template must be uploaded manually.
 
 ## OpenClaw as Claude Native Service
 
