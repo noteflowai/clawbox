@@ -12,6 +12,8 @@ A cloud-native OpenClaw environment on Kubernetes
 
 > **Note:** CloudFormation's `templateURL` parameter only accepts S3 URLs, so the template must be uploaded manually.
 
+> **Tip:** Deploy in a fresh region to avoid hitting the default Elastic IP quota (5 per region). A region with no existing workloads ensures sufficient capacity.
+
 ## OpenClaw as Claude Native Service
 
 OpenClaw is the runtime gateway that runs inside the clawbox pod, bridging Claude Code to MCP servers (Playwright, Google Search, and custom tools). Running it as a managed Kubernetes service on EKS gives you a reproducible, secure, and iterable AI development environment.
