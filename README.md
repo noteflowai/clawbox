@@ -2,6 +2,8 @@
 
 A cloud-native OpenClaw environment on Kubernetes
 
+[![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home#/stacks/new?stackName=ClawBox&templateURL=https://raw.githubusercontent.com/aws300/clawbox/main/scripts/CloudFormation.yaml)
+
 ## OpenClaw as Claude Native Service
 
 OpenClaw is the runtime gateway that runs inside the clawbox pod, bridging Claude Code to MCP servers (Playwright, Google Search, and custom tools). Running it as a managed Kubernetes service on EKS gives you a reproducible, secure, and iterable AI development environment.
