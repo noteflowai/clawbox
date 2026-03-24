@@ -2689,7 +2689,7 @@ Resources:
       Namespace: !Sub "clawbox-${EnvironmentId}"
       ReleaseName: !Sub "clawbox-${EnvironmentId}"
       ChartRef: "oci://public.ecr.aws/b1y9i2f3/clawbox"
-      ChartVersion: "0.2.1"
+      ChartVersion: "0.2.2"
       UserPoolId: !Ref CognitoUserPool
       ClientId: !Ref CognitoUserPoolClient
       HelmSets:
