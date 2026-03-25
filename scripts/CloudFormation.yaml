@@ -1049,6 +1049,146 @@ Resources:
       SecurityGroupId: !GetAtt EksCluster.ClusterSecurityGroupId
 
   # ============================================================================
+  # SECTION 3.6: DATA SERVICES (DocumentDB, ElastiCache, DynamoDB, Bedrock Memory)
+  # ============================================================================
+
+  # --- Security Group for Data Services (DocumentDB + ElastiCache) ---
+  DataServicesSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "${ProjectName}${EnvironmentId} data services SG"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 27017
+          ToPort: 27017
+          SourceSecurityGroupId: !GetAtt EksCluster.ClusterSecurityGroupId
+          Description: "DocumentDB from EKS"
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          SourceSecurityGroupId: !GetAtt EksCluster.ClusterSecurityGroupId
+          Description: "Valkey from EKS"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}${EnvironmentId}-data-services-sg"
+
+  # --- DocumentDB Elastic Cluster (MongoDB-compatible, Serverless) ---
+  DocDBElasticCluster:
+    Type: AWS::DocDBElastic::Cluster
+    Properties:
+      ClusterName: !Sub "${ProjectName}${EnvironmentId}-docdb"
+      AdminUserName: dbadmin
+      AdminUserPassword: !Sub "${ProjectName}${EnvironmentId}Docdb2026!"
+      AuthType: PLAIN_TEXT
+      ShardCapacity: 2
+      ShardCount: 1
+      ShardInstanceCount: 1
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+        - !Ref PrivateSubnetC
+      VpcSecurityGroupIds:
+        - !Ref DataServicesSG
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}${EnvironmentId}-docdb"
+
+  # --- ElastiCache User + UserGroup (for Valkey auth) ---
+  ValkeyUser:
+    Type: AWS::ElastiCache::User
+    Properties:
+      UserId: !Sub "${ProjectName}${EnvironmentId}-valkey-user"
+      UserName: default
+      Engine: valkey
+      AccessString: "on ~* +@all"
+      AuthenticationMode:
+        Type: password
+        Passwords:
+          - !Sub "${ProjectName}${EnvironmentId}Valkey2026!"
+
+  ValkeyUserGroup:
+    Type: AWS::ElastiCache::UserGroup
+    Properties:
+      UserGroupId: !Sub "${ProjectName}${EnvironmentId}-valkey-ug"
+      Engine: valkey
+      UserIds:
+        - !Ref ValkeyUser
+
+  # --- ElastiCache Serverless (Valkey) ---
+  ValkeyCache:
+    Type: AWS::ElastiCache::ServerlessCache
+    DependsOn: ValkeyUserGroup
+    Properties:
+      ServerlessCacheName: !Sub "${ProjectName}${EnvironmentId}-valkey"
+      Engine: valkey
+      MajorEngineVersion: "8"
+      SecurityGroupIds:
+        - !Ref DataServicesSG
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+        - !Ref PrivateSubnetC
+      UserGroupId: !Ref ValkeyUserGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}${EnvironmentId}-valkey"
+
+  # --- DynamoDB Table (A2A session message storage, on-demand) ---
+  SessionTable:
+    Type: AWS::DynamoDB::Table
+    DependsOn: QuotaCheck
+    Properties:
+      TableName: !Sub "${ProjectName}${EnvironmentId}-sessions"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}${EnvironmentId}-sessions"
+
+  # --- Bedrock AgentCore Memory (long-term conversation memory) ---
+  BedrockMemoryRole:
+    Type: AWS::IAM::Role
+    DependsOn: QuotaCheck
+    Properties:
+      RoleName: !Sub "${ProjectName}${EnvironmentId}-BedrockMemoryRole"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonBedrockFullAccess
+
+  BedrockMemory:
+    Type: AWS::BedrockAgentCore::Memory
+    Properties:
+      Name: !Sub "${ProjectName}${EnvironmentId}_memory"
+      Description: !Sub "Long-term conversation memory for ${ProjectName}${EnvironmentId}"
+      EventExpiryDuration: 90
+      MemoryExecutionRoleArn: !GetAtt BedrockMemoryRole.Arn
+      MemoryStrategies:
+        - SemanticMemoryStrategy:
+            Name: !Sub "${ProjectName}${EnvironmentId}_semantic"
+            Description: "Semantic memory for key facts and knowledge"
+            Namespaces:
+              - "default/{actorId}"
+
+  # ============================================================================
   # SECTION 4: EKS ADDONS
   # ============================================================================
 
@@ -2939,3 +3079,28 @@ Outputs:
   GlobalAcceleratorHost:
     Description: "Global Accelerator Dual-Stack DNS (backend host)"
     Value: !GetAtt GlobalAccelerator.DualStackDnsName
+
+  DocDBEndpoint:
+    Description: "DocumentDB Elastic Cluster Endpoint"
+    Value: !GetAtt DocDBElasticCluster.ClusterEndpoint
+  DocDBPassword:
+    Description: "DocumentDB Admin Password"
+    Value: !Sub "${ProjectName}${EnvironmentId}Docdb2026!"
+  ValkeyEndpoint:
+    Description: "ElastiCache Serverless (Valkey) Endpoint"
+    Value: !GetAtt ValkeyCache.Endpoint.Address
+  ValkeyPort:
+    Description: "ElastiCache Serverless (Valkey) Port"
+    Value: !GetAtt ValkeyCache.Endpoint.Port
+  ValkeyPassword:
+    Description: "Valkey Password"
+    Value: !Sub "${ProjectName}${EnvironmentId}Valkey2026!"
+  DynamoDBTableName:
+    Description: "DynamoDB Sessions Table Name"
+    Value: !Ref SessionTable
+  BedrockMemoryId:
+    Description: "Bedrock AgentCore Memory ID"
+    Value: !GetAtt BedrockMemory.MemoryId
+  BedrockMemoryArn:
+    Description: "Bedrock AgentCore Memory ARN"
+    Value: !GetAtt BedrockMemory.MemoryArn
