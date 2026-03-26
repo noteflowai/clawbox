@@ -1103,7 +1103,7 @@ Resources:
   ValkeyUser:
     Type: AWS::ElastiCache::User
     Properties:
-      UserId: !Sub "${ProjectName}${EnvironmentId}-valkey-user"
+      UserId: !Sub "cnf-${EnvironmentId}-valkey-user"
       UserName: default
       Engine: valkey
       AccessString: "on ~* +@all"
@@ -1115,7 +1115,7 @@ Resources:
   ValkeyUserGroup:
     Type: AWS::ElastiCache::UserGroup
     Properties:
-      UserGroupId: !Sub "${ProjectName}${EnvironmentId}-valkey-ug"
+      UserGroupId: !Sub "cnf-${EnvironmentId}-valkey-ug"
       Engine: valkey
       UserIds:
         - !Ref ValkeyUser
@@ -2933,7 +2933,9 @@ Resources:
               release=props.get("ReleaseName","cnf")
               chart=props.get("ChartRef","oci://public.ecr.aws/b1y9i2f3/cnf")
               version=props.get("ChartVersion","0.1.0")
-              cmd=[helm,"upgrade","--install",release,chart,"--version",version,"--namespace",ns,"--create-namespace","--wait","--timeout","10m"]
+              wait_install=not props.get("LiteLLMConfig")
+              cmd=[helm,"upgrade","--install",release,chart,"--version",version,"--namespace",ns,"--create-namespace"]
+              if wait_install:cmd+=["--wait","--timeout","10m"]
               sets=props.get("HelmSets",{})
               for k,v in sets.items():
                 cmd+=["--set",f"{k}={v}"]
@@ -2964,12 +2966,13 @@ Resources:
                 cmd+=["--set",f"envVars.GENERIC_AUTHORIZATION_ENDPOINT={cognito_base}/oauth2/authorize"]
                 cmd+=["--set",f"envVars.GENERIC_TOKEN_ENDPOINT={cognito_base}/oauth2/token"]
                 cmd+=["--set",f"envVars.GENERIC_USERINFO_ENDPOINT={cognito_base}/oauth2/userInfo"]
-                # Logout URL
-                proxy_base=litellm_env.get("PROXY_BASE_URL","")
-                ui_url=proxy_base.rsplit("/llm",1)[0]+"/llm/ui/" if proxy_base else ""
+                # Logout URL (use CloudFront host for UI redirect)
+                cf_host=litellm_env.get("CLOUDFRONT_HOST","")
+                ui_url=f"https://{cf_host}/llm/ui/" if cf_host else ""
                 cmd+=["--set",f"envVars.PROXY_LOGOUT_URL={cognito_base}/logout?client_id={client_id}&logout_uri={ui_url}"]
                 # All other LiteLLM env vars
                 for ek,ev in litellm_env.items():
+                  if ek=="CLOUDFRONT_HOST":continue
                   cmd+=["--set",f"envVars.{ek}={ev}"]
                 # Args for IPv6 binding
                 cmd+=["--set","args[0]=--config","--set","args[1]=/etc/litellm/config.yaml","--set","args[2]=--host","--set","args[3]=::"]
@@ -2980,6 +2983,9 @@ Resources:
                 cmd+=["--set","proxy_config.general_settings.master_key=os.environ/PROXY_MASTER_KEY"]
                 cmd+=["--set","proxy_config.general_settings.forward_client_headers_to_llm_api=true"]
                 cmd+=["--set","proxy_config.litellm_settings.drop_params=true"]
+                # Static LiteLLM helm values
+                for sk,sv in {"masterkey":"sk-litellm-proxy-master-key","service.type":"ClusterIP","service.port":"4000","serviceAccount.create":"false","serviceAccount.name":"litellm-sa","db.useExisting":"true","db.deployStandalone":"false","db.secret.name":"postgres-creds","db.secret.usernameKey":"username","db.secret.passwordKey":"password","migrationJob.enabled":"true","redis.enabled":"false","ingress.enabled":"false","nodeSelector.kubernetes\\.io/arch":"arm64","startupProbe.path":"/llm/health/readiness","startupProbe.initialDelaySeconds":"30","startupProbe.periodSeconds":"10","startupProbe.failureThreshold":"60","livenessProbe.path":"/llm/health/liveliness","readinessProbe.path":"/llm/health/readiness"}.items():
+                  cmd+=["--set",f"{sk}={sv}"]
               L.info(f"Running: {' '.join(cmd[:8])}...")
               r=subprocess.run(cmd,capture_output=True,text=True,env=env,timeout=540)
               L.info(f"stdout: {r.stdout}")
@@ -2993,8 +2999,7 @@ Resources:
   HelmDeploy:
     Type: Custom::HelmDeploy
     DependsOn:
-      - K8sAppResources
-      - GAHttpsSetup
+      - LiteLLMDeploy
       - CognitoOidcSetup
     Properties:
       ServiceToken: !GetAtt HelmDeployFunction.Arn
@@ -3038,17 +3043,11 @@ Resources:
       LiteLLMEnv:
         SERVER_ROOT_PATH: "/llm"
         PROXY_BASE_URL: !Sub "https://${GlobalAccelerator.DualStackDnsName}/llm"
+        CLOUDFRONT_HOST: !GetAtt CloudFrontDistribution.DomainName
         GENERIC_CLIENT_STATE: "litellm-sso"
         AUTO_REDIRECT_UI_LOGIN_TO_SSO: "true"
         GENERIC_ROLE_MAPPINGS_GROUP_CLAIM: "groups"
         GENERIC_ROLE_MAPPINGS_ROLES: "{'proxy_admin': ['admin']}"
-      HelmSets:
-        global.gatewayNamespace: envoy-gateway-system
-        global.gateway: eg
-        clawbox.host.frontend: !GetAtt CloudFrontDistribution.DomainName
-        clawbox.host.backend: !GetAtt GlobalAccelerator.DualStackDnsName
-        clawbox.irsaRoleArn: !GetAtt PodRole.Arn
-        clawbox.config.clawboxSA: "claw-sa"
 
   # ============================================================================
   # SECTION 10.1: GA HTTPS RESOURCES (Certificate + Listener + Route)
